@@ -36,6 +36,11 @@ public class Job {
     private List<JobLogEntry> logs = new ArrayList<>();
     private String prUrl;
     private String failureReason;
+    /**
+     * On retry, the pipeline step to continue from (CLONE, FIX, VERIFY, SCAN, PUSH, PR, PLAN).
+     * Null on a first run.
+     */
+    private String resumeFrom;
 
     /** Claude's clarifying question while status is AWAITING_INPUT; cleared on resume. */
     private String pendingQuestion;

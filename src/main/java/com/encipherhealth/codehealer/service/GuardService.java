@@ -36,6 +36,18 @@ public class GuardService {
     private final TraceService traceService;
 
     public GuardDecision authorize(Job job, String action, String actor) {
+        return authorize(job, action, actor, false);
+    }
+
+    /**
+     * Operator resume: the job is still {@code PAUSED}, but that halt must not block the
+     * human who is explicitly unpausing it. Kill switch and allowlist still apply.
+     */
+    public GuardDecision authorizeResume(Job job, String action, String actor) {
+        return authorize(job, action, actor, true);
+    }
+
+    private GuardDecision authorize(Job job, String action, String actor, boolean operatorResume) {
         try {
             Settings settings = settingsRepository.findById("global").orElse(null);
             if (settings == null) {
@@ -43,11 +55,13 @@ public class GuardService {
             }
             if (settings.isKillSwitchArmed()) {
                 String reason = settings.getKillSwitchReason() == null || settings.getKillSwitchReason().isBlank()
-                        ? "Kill switch armed"
-                        : "Kill switch armed: " + settings.getKillSwitchReason();
+                        ? "Kill switch armed. Disarm it in Admin → Settings, then Resume."
+                        : "Kill switch armed: " + settings.getKillSwitchReason()
+                                + ". Disarm it in Admin → Settings, then Resume.";
                 return denyAndTrace(job, action, actor, reason, "PAUSED");
             }
-            if (job != null && job.getStatus() != null && BLOCKED_JOB_STATUSES.contains(job.getStatus())) {
+            if (!operatorResume && job != null && job.getStatus() != null
+                    && BLOCKED_JOB_STATUSES.contains(job.getStatus())) {
                 return denyAndTrace(job, action, actor,
                         "Job is " + job.getStatus() + " and cannot take further agent actions",
                         job.getStatus().name());

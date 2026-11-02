@@ -96,18 +96,19 @@ public class JobIntakeService {
 
         List<String> serviceIds = project.getServices().stream().map(ServiceConfig::getId).toList();
         job.setServiceIds(serviceIds);
+        String resumeFrom = ResumePoint.forFailedJob(job);
+        job.setResumeFrom(resumeFrom);
         job.setFailureReason(null);
         job.setPendingQuestion(null);
         job.setCancelledBy(null);
         job.setCancellationReason(null);
-        job.setApprovedBy(null);
-        job.setApprovedAt(null);
         job.transitionTo(JobStatus.RECEIVED);
         job.setUpdatedAt(Instant.now());
         job = jobRepository.save(job);
         sseBroadcastService.broadcastJobUpdate(job);
 
-        log.info("Retrying job {} for ticket {}", job.getId(), job.getTicketId());
+        log.info("Retrying job {} for ticket {} from {}", job.getId(), job.getTicketId(),
+                resumeFrom == null ? "the start" : resumeFrom);
         missionControlService.dispatch(job);
         return job;
     }

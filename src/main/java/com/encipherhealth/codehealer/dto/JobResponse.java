@@ -37,6 +37,7 @@ public record JobResponse(
         String l1Classification,
         String l1DraftResponse,
         List<SageCitation> l1Citations,
-        String l1EscalationReason
+        String l1EscalationReason,
+        String resumeFrom
 ) {
 }

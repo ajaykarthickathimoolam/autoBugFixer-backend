@@ -41,6 +41,7 @@ public class MissionControlService {
     private final SseBroadcastService sseBroadcastService;
     private final L1SupportService l1SupportService;
     private final SageService sageService;
+    private final JobOrchestrationService jobOrchestrationService;
     private final ExecutorService executor;
 
     public Job pause(String jobId) {
@@ -60,12 +61,26 @@ public class MissionControlService {
         return job;
     }
 
+    public Job submitClarification(String jobId, String answer) {
+        Job job = requireJob(jobId);
+        if (job.getStatus() != JobStatus.AWAITING_INPUT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Job is not waiting for input");
+        }
+        if (answer == null || answer.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Answer is required");
+        }
+        Project project = projectRepository.findById(job.getProjectId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
+        jobOrchestrationService.resumeAfterInput(job, project, answer.strip());
+        return jobRepository.findById(jobId).orElse(job);
+    }
+
     public Job resume(String jobId) {
         Job job = requireJob(jobId);
         if (job.getStatus() != JobStatus.PAUSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only paused jobs can be resumed");
         }
-        GuardDecision decision = guardService.authorize(job, job.getMissionType() == MissionType.L1_SUPPORT
+        GuardDecision decision = guardService.authorizeResume(job, job.getMissionType() == MissionType.L1_SUPPORT
                 ? "L1_INVESTIGATE" : "CLONE", currentUser());
         if (!decision.allowed()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, decision.reason());

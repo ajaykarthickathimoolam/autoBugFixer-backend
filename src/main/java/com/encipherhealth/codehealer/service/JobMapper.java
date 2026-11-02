@@ -2,6 +2,7 @@ package com.encipherhealth.codehealer.service;
 
 import com.encipherhealth.codehealer.dto.JobResponse;
 import com.encipherhealth.codehealer.model.Job;
+import com.encipherhealth.codehealer.model.JobStatus;
 import com.encipherhealth.codehealer.model.MissionType;
 import com.encipherhealth.codehealer.model.Project;
 import org.springframework.stereotype.Component;
@@ -39,7 +40,10 @@ public class JobMapper {
                 job.getL1Classification(),
                 job.getL1DraftResponse(),
                 job.getL1Citations(),
-                job.getL1EscalationReason()
+                job.getL1EscalationReason(),
+                job.getStatus() == JobStatus.FAILED
+                        ? ResumePoint.forFailedJob(job)
+                        : null
         );
     }
 }

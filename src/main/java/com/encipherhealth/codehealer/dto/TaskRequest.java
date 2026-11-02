@@ -30,6 +30,8 @@ public record TaskRequest(
         boolean requireChangePlanApproval,
         boolean testsMustPass,
         boolean securityScansEnabled,
-        String sageContext
+        String sageContext,
+        String resumeFrom,
+        String securityScanSummary
 ) {
 }

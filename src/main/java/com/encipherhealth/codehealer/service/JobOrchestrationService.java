@@ -44,7 +44,8 @@ public class JobOrchestrationService {
         jobCompletionRegistry.register(job.getId());
 
         try {
-            GuardDecision guard = guardService.authorize(job, "CLONE", "workforce");
+            String resumeFrom = job.getResumeFrom();
+            GuardDecision guard = guardService.authorize(job, ResumePoint.guardAction(resumeFrom), "workforce");
             if (!guard.allowed()) {
                 JobStatus halt = haltStatus(guard.haltStatus());
                 job.transitionTo(halt);
@@ -61,10 +62,12 @@ public class JobOrchestrationService {
                 return;
             }
 
-            job.transitionTo(JobStatus.CLONING);
-            job.setUpdatedAt(Instant.now());
-            jobRepository.save(job);
-            sseBroadcastService.broadcastJobUpdate(job);
+            if (ResumePoint.marksCloning(resumeFrom)) {
+                job.transitionTo(JobStatus.CLONING);
+                job.setUpdatedAt(Instant.now());
+                jobRepository.save(job);
+                sseBroadcastService.broadcastJobUpdate(job);
+            }
 
             jobRunnerClient.startTask(buildTaskRequest(job, project));
         } catch (Exception e) {
@@ -96,25 +99,34 @@ public class JobOrchestrationService {
         }
     }
 
-    /** Called by the poller once it detects a human reply on a paused job's Zoho ticket. */
-    public void resumeAfterInput(Job job, Project project, String humanAnswer) {
-        String question = job.getPendingQuestion();
-        String augmentedDescription = (job.getTicketDescription() != null ? job.getTicketDescription() : "")
+    /** Called by the poller, Jira webhook, or the job-detail form once a human answers. */
+    public synchronized void resumeAfterInput(Job job, Project project, String humanAnswer) {
+        Job latest = jobRepository.findById(job.getId()).orElse(job);
+        if (latest.getStatus() != JobStatus.AWAITING_INPUT) {
+            log.info("Ignoring clarification for job {} — status is {}", latest.getId(), latest.getStatus());
+            return;
+        }
+        if (humanAnswer == null || humanAnswer.isBlank()) {
+            log.info("Ignoring empty clarification for job {}", latest.getId());
+            return;
+        }
+        String question = latest.getPendingQuestion();
+        String augmentedDescription = (latest.getTicketDescription() != null ? latest.getTicketDescription() : "")
                 + "\n\n---\nCodeHealer paused to ask a clarifying question on this ticket:\nQ: " + question
-                + "\nA (from a human, via a reply on the ticket): " + humanAnswer;
-        job.setTicketDescription(augmentedDescription);
-        job.setPendingQuestion(null);
-        job.transitionTo(JobStatus.CLONING);
-        job.setUpdatedAt(Instant.now());
-        jobRepository.save(job);
-        sseBroadcastService.broadcastJobUpdate(job);
+                + "\nA (from a human, via a reply on the ticket): " + humanAnswer.strip();
+        latest.setTicketDescription(augmentedDescription);
+        latest.setPendingQuestion(null);
+        latest.transitionTo(JobStatus.CLONING);
+        latest.setUpdatedAt(Instant.now());
+        jobRepository.save(latest);
+        sseBroadcastService.broadcastJobUpdate(latest);
 
         try {
-            jobRunnerClient.startTask(buildTaskRequest(job, project));
+            jobRunnerClient.startTask(buildTaskRequest(latest, project));
         } catch (Exception e) {
-            log.error("Failed to resume job {} after human input", job.getId(), e);
-            failJob(job, project, "Failed to resume job-runner task: " + e.getMessage());
-            jobCompletionRegistry.complete(job.getId());
+            log.error("Failed to resume job {} after human input", latest.getId(), e);
+            failJob(latest, project, "Failed to resume job-runner task: " + e.getMessage());
+            jobCompletionRegistry.complete(latest.getId());
         }
     }
 
@@ -185,7 +197,9 @@ public class JobOrchestrationService {
                 requireApproval,
                 testsMustPass,
                 scansEnabled,
-                sageContext
+                sageContext,
+                job.getResumeFrom(),
+                job.getSecurityScanSummary()
         );
     }
 

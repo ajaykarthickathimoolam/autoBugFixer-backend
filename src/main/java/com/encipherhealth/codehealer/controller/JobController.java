@@ -186,6 +186,13 @@ public class JobController {
         return withJob(id, job -> missionControlService.approve(id));
     }
 
+    @PostMapping("/{id}/answer")
+    public JobResponse answer(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
+        authorize(id);
+        String answer = body == null ? null : body.get("answer");
+        return withJob(id, job -> missionControlService.submitClarification(id, answer));
+    }
+
     @PostMapping("/{id}/reject")
     public JobResponse reject(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
         authorize(id);
